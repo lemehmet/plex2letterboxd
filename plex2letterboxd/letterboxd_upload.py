@@ -51,6 +51,11 @@ SAVE_URL = f'{BASE}/s/save-users-imported-imdb-history'
 
 CSRF_COOKIE = 'com.xk72.webparts.csrf'
 SIGNED_IN_COOKIE = 'letterboxd.signed.in.as'
+# Letterboxd's actual session/auth token. Names vary by client (`...CURRENT`,
+# `...USER_TOKEN`, etc.) so we accept any cookie under the `letterboxd.user.`
+# namespace. Without it, requests are unauthenticated even if the username
+# marker is present.
+SESSION_COOKIE_PREFIX = 'letterboxd.user.'
 
 # Chrome 136 was the oldest profile that consistently passed Cloudflare on
 # POST requests during testing in May 2026; older profiles (chrome<=131,
@@ -86,6 +91,13 @@ def _make_session(cookie_string):
         raise UploadError(
             f'cookie string is missing {SIGNED_IN_COOKIE!r} -- you may not '
             'be signed in, or you copied only a partial cookie header'
+        )
+    if not any(k.startswith(SESSION_COOKIE_PREFIX) for k in cookies):
+        raise UploadError(
+            f'cookie string is missing the session token (a cookie named '
+            f'{SESSION_COOKIE_PREFIX}* such as {SESSION_COOKIE_PREFIX}CURRENT). '
+            'Without it the upload POST is treated as anonymous and redirected '
+            'to the sign-in page. Re-copy the full Cookie header from devtools.'
         )
     if not _HAS_CURL_CFFI:
         raise UploadError(
@@ -317,8 +329,17 @@ def upload_csv_file(csv_path, cookie_string):
 
     session = _make_session(cookie_string)
     # Prime the session so cf_clearance is exercised on a GET first; some flows
-    # need this to refresh edge state before the first POST.
-    session.get(IMPORT_PAGE, headers={'Referer': BASE + '/'})
+    # need this to refresh edge state before the first POST. Also verifies we
+    # actually reach the import wizard rather than the sign-in page.
+    warm = session.get(IMPORT_PAGE, headers={'Referer': BASE + '/'})
+    _check_cloudflare(warm, 'warm-up GET /import/')
+    if 'standalone-flow-sign-in' in warm.text or 'screen-standalone-flow-sign-in' in warm.text:
+        raise UploadError(
+            "GET /import/ redirected to the sign-in page -- the cookie isn't "
+            "authenticating. The most common cause is a missing or stale "
+            f"{SESSION_COOKIE_PREFIX}* cookie. Re-copy the full Cookie header "
+            'from a freshly-signed-in browser session.'
+        )
 
     items = _upload_csv(session, csv_bytes)
     import_films = [data_json for data_json, _ in items]

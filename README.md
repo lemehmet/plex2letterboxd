@@ -93,8 +93,12 @@ browser already signed in to letterboxd.com.
 2. Open the browser's devtools (`F12`) and go to the **Network** tab.
 3. Reload any letterboxd.com page and click any request to letterboxd.com.
 4. Under **Request Headers**, copy the entire value of the `Cookie:` header.
-   It must include at least `letterboxd.signed.in.as=...` and
-   `com.xk72.webparts.csrf=...`.
+   It must include at minimum:
+   - `com.xk72.webparts.csrf=...` (CSRF token)
+   - `letterboxd.signed.in.as=...` (your username)
+   - `letterboxd.user.CURRENT=...` (the actual session token -- without
+     this the upload silently redirects to the sign-in page)
+   - `cf_clearance=...` (Cloudflare's bot-challenge clearance)
 
 ### Providing the cookie
 
