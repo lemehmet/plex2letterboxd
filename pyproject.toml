@@ -16,3 +16,6 @@ dependencies = [
   "plexapi>=4.15.7"
 ]
 requires-python = ">=3"
+
+[project.scripts]
+plex2letterboxd = "plex2letterboxd.plex2letterboxd:main"

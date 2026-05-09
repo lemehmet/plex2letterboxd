@@ -11,9 +11,22 @@ Movies are exported to a CSV file containing:
 
 ## Installation
 
+### pipx (recommended for user-level installs)
+
+Installs the `plex2letterboxd` command in an isolated venv on your `PATH`. Works without `sudo`.
+
 ```console
-$ git clone https://github.com/mtimkovich/plex2letterboxd.git
-$ cd plex2letterbox
+$ pipx install git+https://github.com/lemehmet/plex2letterboxd.git
+$ plex2letterboxd --help
+```
+
+Upgrade later with `pipx upgrade plex2letterboxd`.
+
+### From source
+
+```console
+$ git clone https://github.com/lemehmet/plex2letterboxd.git
+$ cd plex2letterboxd
 $ python -m venv env
 $ source env/bin/activate
 $ pip install .
@@ -33,8 +46,10 @@ $ docker run -v $(pwd)/config.ini:/app/config.ini -v $(pwd)/letterboxd.csv:/app/
 Rename `config.ini.example` to `config.ini` and fill it with your Plex credentials.
 
 ```console
-$ python -m plex2letterboxd
+$ plex2letterboxd
 ```
+
+(Or `python -m plex2letterboxd` if you prefer to invoke the module directly.)
 
 ```
 optional arguments:
