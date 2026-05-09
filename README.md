@@ -13,21 +13,37 @@ Movies are exported to a CSV file containing:
 
 ### pipx (recommended for user-level installs)
 
-Installs the `plex2letterboxd` command in an isolated venv on your `PATH`. Works without `sudo`.
+[pipx](https://pipx.pypa.io/) installs the `plex2letterboxd` command in an
+isolated venv and puts it on your `PATH`. Works on a remote host with no
+`sudo` access.
+
+CSV-export only (no upload):
 
 ```console
 $ pipx install git+https://github.com/lemehmet/plex2letterboxd.git
 $ plex2letterboxd --help
 ```
 
-Upgrade later with `pipx upgrade plex2letterboxd`.
-
-If you plan to use `--upload`, install the `[upload]` extra so Cloudflare's bot
-check can be bypassed via Chrome TLS fingerprinting:
+If you also want `--upload`, you need `curl_cffi` in the same venv to bypass
+Cloudflare's bot challenge. Two equivalent options:
 
 ```console
+# Option A: install the [upload] extra in one go
 $ pipx install 'plex2letterboxd[upload] @ git+https://github.com/lemehmet/plex2letterboxd.git'
+
+# Option B: already installed without the extra? inject curl_cffi instead
+$ pipx inject plex2letterboxd curl_cffi
 ```
+
+Run it the same way regardless of how you installed:
+
+```console
+$ plex2letterboxd --ini ~/.config/plex2letterboxd.ini --upload \
+    --letterboxd-cookie-file ~/.letterboxd.cookie
+```
+
+Upgrade later with `pipx upgrade plex2letterboxd` (re-run the inject if you
+chose Option B and pipx wipes the venv during upgrade).
 
 ### From source
 
@@ -93,12 +109,12 @@ browser already signed in to letterboxd.com.
 2. Open the browser's devtools (`F12`) and go to the **Network** tab.
 3. Reload any letterboxd.com page and click any request to letterboxd.com.
 4. Under **Request Headers**, copy the entire value of the `Cookie:` header.
-   It must include at minimum:
-   - `com.xk72.webparts.csrf=...` (CSRF token)
-   - `letterboxd.signed.in.as=...` (your username)
-   - `letterboxd.user.CURRENT=...` (the actual session token -- without
-     this the upload silently redirects to the sign-in page)
-   - `cf_clearance=...` (Cloudflare's bot-challenge clearance)
+   The following cookies are all required:
+   - `com.xk72.webparts.csrf` -- CSRF token
+   - `letterboxd.signed.in.as` -- your username
+   - `letterboxd.user.CURRENT` -- the actual session token; without it the
+     upload silently redirects to the sign-in page
+   - `cf_clearance` -- Cloudflare's bot-challenge clearance
 
 ### Providing the cookie
 
