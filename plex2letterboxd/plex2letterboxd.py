@@ -139,7 +139,7 @@ def main():
                   '[letterboxd] cookie entry to config.ini.', file=sys.stderr)
             sys.exit(2)
         try:
-            result = letterboxd_upload.upload_entries(entries, cookie)
+            result = letterboxd_upload.upload_csv_file(args.output, cookie)
         except letterboxd_upload.UploadError as e:
             print(f'Letterboxd upload failed: {e}', file=sys.stderr)
             sys.exit(3)

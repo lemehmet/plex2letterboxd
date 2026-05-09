@@ -28,7 +28,9 @@ This is reverse-engineered from the public web UI; expect breakage if Letterboxd
 changes the import flow.
 """
 import json
+import os
 import re
+import tempfile
 from html import unescape
 from http.cookies import SimpleCookie
 
@@ -61,9 +63,6 @@ USER_AGENT = (
     'AppleWebKit/537.36 (KHTML, like Gecko) '
     'Chrome/136.0.0.0 Safari/537.36'
 )
-
-CHUNK_SIZE = 250
-
 
 class UploadError(Exception):
     """Raised when the upload flow cannot complete."""
@@ -122,29 +121,43 @@ def _check_cloudflare(resp, step):
         )
 
 
-def _build_csv(entries):
-    """Re-emit entries as a Letterboxd-compatible CSV byte string."""
-    import csv
-    import io
-    buf = io.StringIO(newline='')
-    w = csv.writer(buf)
-    w.writerow(['Title', 'Year', 'imdbID', 'Rating10', 'WatchedDate'])
-    for e in entries:
-        w.writerow([e.get('title') or '',
-                    e.get('year') or '',
-                    e.get('imdb_id') or '',
-                    e.get('rating10') or '',
-                    e.get('watched_date') or ''])
-    return buf.getvalue().encode('utf-8')
-
-
 # === step 1: upload CSV ===================================================
 
-_DATA_JSON_RE = re.compile(r'<li class="import-film"[^>]+data-json="([^"]+)"')
-_LI_RE = re.compile(
-    r'<li class="import-film"[^>]+data-json="([^"]+)"[^>]*>(.*?)</li>',
-    re.S,
+# Match each import-film <li> regardless of attribute order. We capture the
+# whole tag first, then pull `data-json` and the inner body separately so the
+# regex doesn't depend on attribute ordering.
+_LI_TAG_RE = re.compile(r'<li\b[^>]*\bclass="[^"]*\bimport-film\b[^"]*"[^>]*>',
+                        re.I)
+_LI_BODY_RE = re.compile(
+    r'(<li\b[^>]*\bclass="[^"]*\bimport-film\b[^"]*"[^>]*>)(.*?)</li>',
+    re.S | re.I,
 )
+_DATA_JSON_RE = re.compile(r'\bdata-json="([^"]*)"')
+
+
+def _dump_response(resp, prefix):
+    """Save a response body for debugging; return the path."""
+    fd, path = tempfile.mkstemp(prefix=prefix, suffix='.html')
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(resp.text)
+    return path
+
+
+def _scan_error_markers(html):
+    """Best-effort: surface any obvious 'something went wrong' text from a
+    Letterboxd response so the user gets more than 'no entries parsed'."""
+    snippets = []
+    for pat in (
+        r'<h1[^>]*>([^<]+(?:error|fail|invalid|sorry|denied)[^<]*)</h1>',
+        r'class="error[^"]*"[^>]*>([^<]+)<',
+        r'<p[^>]*class="message[^"]*"[^>]*>([^<]+)<',
+        r'<title>([^<]+)</title>',
+    ):
+        for m in re.finditer(pat, html, re.I):
+            text = m.group(1).strip()
+            if text and text not in snippets:
+                snippets.append(text)
+    return snippets[:3]
 
 
 def _upload_csv(session, csv_bytes):
@@ -164,10 +177,15 @@ def _upload_csv(session, csv_bytes):
         )
 
     items = []
-    for match in _LI_RE.finditer(resp.text):
-        data_json = json.loads(unescape(match.group(1)))
-        # Per-li hidden inputs become the form field templates per film.
-        inner = match.group(2)
+    for match in _LI_BODY_RE.finditer(resp.text):
+        opening_tag, inner = match.group(1), match.group(2)
+        data_json_match = _DATA_JSON_RE.search(opening_tag)
+        if not data_json_match:
+            continue
+        try:
+            data_json = json.loads(unescape(data_json_match.group(1)))
+        except json.JSONDecodeError:
+            continue
         per_li_fields = {}
         for fname, fval in re.findall(
                 r'<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"', inner):
@@ -175,10 +193,15 @@ def _upload_csv(session, csv_bytes):
         items.append((data_json, per_li_fields))
 
     if not items:
+        debug_path = _dump_response(resp, 'plex2letterboxd-upload-')
+        markers = _scan_error_markers(resp.text)
+        marker_hint = (' Letterboxd response markers: '
+                       + '; '.join(repr(m) for m in markers)) if markers else ''
         raise UploadError(
-            'CSV upload returned the wizard page but no import-film entries '
-            'were parsed -- the import may have been rejected, or Letterboxd '
-            'changed the wizard markup'
+            f'CSV upload returned a {len(resp.text)}-byte page but no '
+            'import-film entries were parsed. The import may have been '
+            'rejected, or Letterboxd changed the wizard markup. Full '
+            f'response saved to {debug_path} for inspection.{marker_hint}'
         )
     return items
 
@@ -279,15 +302,17 @@ def _save(session, items, matches):
 
 # === public entry point ===================================================
 
-def upload_entries(entries, cookie_string, chunk_size=CHUNK_SIZE):
-    """Upload watched-history entries to Letterboxd.
+def upload_csv_file(csv_path, cookie_string):
+    """Upload an already-written Letterboxd-format CSV to the user's diary.
 
-    `entries` is the list returned by `collect_entries`. `cookie_string` is the
-    full Cookie header from a signed-in browser session.
+    Single-file upload (no chunking) -- the wizard is happy to ingest the whole
+    file in one go up to its 1MB ceiling. For typical libraries that's plenty.
 
     Returns ``{"submitted": n, "matched": m}``. Raises ``UploadError`` on failure.
     """
-    if not entries:
+    with open(csv_path, 'rb') as f:
+        csv_bytes = f.read()
+    if not csv_bytes.strip():
         return {'submitted': 0, 'matched': 0}
 
     session = _make_session(cookie_string)
@@ -295,20 +320,9 @@ def upload_entries(entries, cookie_string, chunk_size=CHUNK_SIZE):
     # need this to refresh edge state before the first POST.
     session.get(IMPORT_PAGE, headers={'Referer': BASE + '/'})
 
-    submitted = 0
-    matched = 0
-    for i in range(0, len(entries), chunk_size):
-        batch = entries[i:i + chunk_size]
-        submitted += len(batch)
+    items = _upload_csv(session, csv_bytes)
+    import_films = [data_json for data_json, _ in items]
+    film_matches = _match_films(session, import_films)
+    _save(session, items, film_matches)
 
-        csv_bytes = _build_csv(batch)
-        items = _upload_csv(session, csv_bytes)
-        # Step 2 needs the data-json blocks parsed by Letterboxd, not our
-        # in-memory entries (Letterboxd may normalize titles etc).
-        import_films = [data_json for data_json, _ in items]
-        film_matches = _match_films(session, import_films)
-        matched += len(film_matches)
-
-        _save(session, items, film_matches)
-
-    return {'submitted': submitted, 'matched': matched}
+    return {'submitted': len(items), 'matched': len(film_matches)}
