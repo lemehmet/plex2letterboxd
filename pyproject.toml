@@ -18,5 +18,13 @@ dependencies = [
 ]
 requires-python = ">=3"
 
+[project.optional-dependencies]
+# `pip install plex2letterboxd[upload]` enables --upload by adding curl_cffi,
+# which impersonates a real Chrome TLS fingerprint to get past Cloudflare's
+# bot challenge on letterboxd.com.
+upload = [
+  "curl_cffi>=0.7"
+]
+
 [project.scripts]
 plex2letterboxd = "plex2letterboxd.plex2letterboxd:main"

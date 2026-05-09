@@ -22,6 +22,13 @@ $ plex2letterboxd --help
 
 Upgrade later with `pipx upgrade plex2letterboxd`.
 
+If you plan to use `--upload`, install the `[upload]` extra so Cloudflare's bot
+check can be bypassed via Chrome TLS fingerprinting:
+
+```console
+$ pipx install 'plex2letterboxd[upload] @ git+https://github.com/lemehmet/plex2letterboxd.git'
+```
+
 ### From source
 
 ```console
@@ -112,9 +119,11 @@ cookie_file = ~/.letterboxd-cookie
 - The flow is reverse-engineered from the import wizard's XHR calls and is
   inherently fragile -- if Letterboxd changes the import page, upload will break
   before extraction does.
-- Cloudflare bot-protection occasionally challenges plain `requests` traffic.
-  If you see HTML responses mentioning "Just a moment", you'll have to fall back
-  to manual CSV upload.
+- letterboxd.com sits behind Cloudflare's bot challenge. Install the `[upload]`
+  extra so `curl_cffi` is available to impersonate Chrome's TLS fingerprint --
+  plain `requests` will hit a "Just a moment..." interstitial. If you still get
+  the challenge with the extra installed, the cookie is probably stale (the
+  `cf_clearance` cookie rotates frequently).
 
 ## Author
 
