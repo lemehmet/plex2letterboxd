@@ -13,7 +13,8 @@ readme = "README.md"
 license = {file = "LICENSE"}
 
 dependencies = [
-  "plexapi>=4.15.7"
+  "plexapi>=4.15.7",
+  "requests>=2.28"
 ]
 requires-python = ">=3"
 

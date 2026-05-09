@@ -64,9 +64,57 @@ optional arguments:
   -w WATCHED_AFTER, --watched-after WATCHED_AFTER
                         only return movies watched after the given time [format:
                         YYYY-MM-DD or 30d] (default: None)
+  -u, --upload          after exporting, upload the entries to Letterboxd
+  --letterboxd-cookie LETTERBOXD_COOKIE
+                        Letterboxd session cookie string
+  --letterboxd-cookie-file LETTERBOXD_COOKIE_FILE
+                        path to a file containing the Letterboxd session cookie
 ```
 
-The generated CSV file can be uploaded to Letterboxd at https://letterboxd.com/import/.
+The generated CSV file can also be uploaded manually at https://letterboxd.com/import/.
+
+## Auto-upload to Letterboxd (`--upload`)
+
+Letterboxd's official API is partner-only and does not accept individual-developer
+applications, so this tool drives the same internal endpoints the
+`/import/` web UI uses. That means you must supply a **session cookie** from a
+browser already signed in to letterboxd.com.
+
+### Getting the cookie
+
+1. Sign in to https://letterboxd.com in your browser.
+2. Open the browser's devtools (`F12`) and go to the **Network** tab.
+3. Reload any letterboxd.com page and click any request to letterboxd.com.
+4. Under **Request Headers**, copy the entire value of the `Cookie:` header.
+   It must include at least `letterboxd.signed.in.as=...` and
+   `com.xk72.webparts.csrf=...`.
+
+### Providing the cookie
+
+Pick whichever fits your setup (CLI flag wins over config file wins over env var):
+
+```console
+$ plex2letterboxd --upload --letterboxd-cookie 'com.xk72.webparts.csrf=...; letterboxd.signed.in.as=you; ...'
+$ plex2letterboxd --upload --letterboxd-cookie-file ~/.letterboxd-cookie
+$ LETTERBOXD_COOKIE='...' plex2letterboxd --upload
+```
+
+Or in `config.ini`:
+
+```ini
+[letterboxd]
+cookie_file = ~/.letterboxd-cookie
+```
+
+### Caveats
+
+- The cookie expires; you'll need to re-copy it periodically.
+- The flow is reverse-engineered from the import wizard's XHR calls and is
+  inherently fragile -- if Letterboxd changes the import page, upload will break
+  before extraction does.
+- Cloudflare bot-protection occasionally challenges plain `requests` traffic.
+  If you see HTML responses mentioning "Just a moment", you'll have to fall back
+  to manual CSV upload.
 
 ## Author
 

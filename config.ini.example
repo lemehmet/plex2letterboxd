@@ -5,3 +5,11 @@
 baseurl =
 # https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/
 token =
+
+# Optional: only needed if you pass --upload to auto-publish to Letterboxd.
+# See README for how to obtain the cookie string from your browser.
+[letterboxd]
+# Paste the full Cookie header from a signed-in letterboxd.com session, OR
+# point cookie_file at a path holding it. CLI flags take precedence.
+# cookie =
+# cookie_file = ~/.letterboxd-cookie
